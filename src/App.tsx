@@ -1108,7 +1108,7 @@ export default function App() {
                   alt="Alloveda Consulting Space" 
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    e.currentTarget.src = "https://i.ibb.co/Y7ZNPWMB/ABHIJEET-BALDOTA-PHOTO.png";
+                    e.currentTarget.src = "https://i.ibb.co/fY3CDm5R/Screenshot-2026-06-04-155958.png";
                   }}
                 />
               </div>
