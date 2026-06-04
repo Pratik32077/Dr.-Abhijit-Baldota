@@ -34,13 +34,17 @@ import {
   Check
 } from 'lucide-react';
 
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, signInWithCustomToken } from "firebase/auth";
+import { getFirestore, collection, addDoc } from "firebase/firestore";
+
 export default function App() {
   // Navigation & Responsiveness States
   const [activeTab, setActiveTab] = useState('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
-  // Logo Error Handling States (Safe React State-driven fallbacks)
+  // Logo Error Handling States
   const [logoError, setLogoError] = useState(false);
   const [footerLogoError, setFooterLogoError] = useState(false);
   const [heroLogoError, setHeroLogoError] = useState(false);
@@ -67,6 +71,7 @@ export default function App() {
   });
   const [isBooked, setIsBooked] = useState(false);
   const [bookedDetails, setBookedDetails] = useState(null);
+  const [formValidationWarning, setFormValidationWarning] = useState('');
 
   // Unified Diabetes Vitals & Organs Checklist State
   const [checkedVitals, setCheckedVitals] = useState({
@@ -78,6 +83,46 @@ export default function App() {
     retina: false,
     nerves: false
   });
+
+  const [db, setDb] = useState(null);
+  const [user, setUser] = useState(null);
+
+  // Define the missing navigateTo helper function to resolve reference errors
+  const navigateTo = (tabId) => {
+    setActiveTab(tabId);
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const appId = typeof __app_id !== 'undefined' ? __app_id : 'alloveda-clinic-pune';
+  const realGoogleMapsUrl = "https://www.google.com/maps/place/Alloveda+Clinic/@18.5553365,73.8020349,17z/data=!3m1!4b1!4m6!3m5!1s0x3bc2bf24930156c1:0x670e75c8161d0e31!8m2!3d18.5553314!4d73.8046098!16s%2Fg%2F11b5ysw7r1?authuser=0&entry=ttu&g_ep=EgoyMDI2MDYwMS4wIKXMDSoASAFQAw%3D%3D";
+
+  useEffect(() => {
+    // Dynamically retrieve context values provided by the client container
+    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+      try {
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const firestoreDb = getFirestore(app);
+        const auth = getAuth(app);
+        setDb(firestoreDb);
+
+        // Authenticate Anon or via Token before executing any database saves
+        const customToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        if (customToken) {
+          signInWithCustomToken(auth, customToken)
+            .then((cred) => setUser(cred.user))
+            .catch(() => {
+              signInAnonymously(auth).then((cred) => setUser(cred.user));
+            });
+        } else {
+          signInAnonymously(auth).then((cred) => setUser(cred.user));
+        }
+      } catch (err) {
+        console.error("Firebase config parsing or initialization failed:", err);
+      }
+    }
+  }, []);
 
   // Toggler for checklists
   const toggleVital = (key) => {
@@ -107,6 +152,7 @@ export default function App() {
     });
     setIsBooked(false);
     setBookedDetails(null);
+    setFormValidationWarning('');
   };
 
   // Track window scroll for premium sticky header effect
@@ -118,7 +164,7 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Panchakarma Rates Data (Directly from rachana panchakarma rates.docx)
+  // Panchakarma Rates Data
   const panchakarmaRates = [
     { name: "Vaman Course", details: "Includes comprehensive whole-body massage and targeted medicated steam", rate: 12000, category: "courses" },
     { name: "Virechan Course (6 Sittings)", details: "Full purgative detox cycle including customized massage and steam protocols", rate: 9000, category: "courses" },
@@ -165,7 +211,7 @@ export default function App() {
     }
   ];
 
-  // FAQ Data (All questions answered deeply matching documents)
+  // FAQ Data
   const faqs = [
     {
       q: "How exactly do you combine Allopathy and Ayurveda?",
@@ -181,7 +227,7 @@ export default function App() {
     },
     {
       q: "How does the Video Consultation workflow function?",
-      a: "If you select WhatsApp Video Consultation, simply submit your request. Our clinic desk will contact you via WhatsApp to verify details, manage the ₹600 consultation payment, and coordinate the call timing. The consultation is conducted directly over a WhatsApp Video Call."
+      a: "If you select Video call check up, simply submit your request. Our clinic desk will contact you via WhatsApp to verify details, manage the ₹600 consultation payment, and coordinate the call timing. The consultation is conducted directly over a Video call check up."
     },
     {
       q: "Are Ayurvedic herbs safe to take with my daily cardiac medicines?",
@@ -189,18 +235,15 @@ export default function App() {
     }
   ];
 
-  const navigateTo = (tab) => {
-    setActiveTab(tab);
-    setMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleBookingSubmit = (e) => {
+  const handleBookingSubmitLocal = async (e) => {
     e.preventDefault();
+    setFormValidationWarning('');
+
     if (!bookingForm.name || !bookingForm.phone || !bookingForm.date || !bookingForm.time) {
-      alert("Please enter all required fields: Name, Phone, Date, and Time Slot.");
+      setFormValidationWarning("Please fill in all mandatory fields: Name, Phone, Date, and Time Slot.");
       return;
     }
+
     const bookingId = "ALLOVEDA-" + Math.floor(100000 + Math.random() * 900000);
     const details = {
       ...bookingForm,
@@ -209,8 +252,67 @@ export default function App() {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
       })
     };
+
+    // Rule 1: Save appointment details securely inside the public data collection path
+    if (db && user) {
+      try {
+        const appointmentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'appointments');
+        await addDoc(appointmentsRef, {
+          ...details,
+          userId: user.uid,
+          createdAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("Database save failed, continuing to WhatsApp dispatch:", err);
+      }
+    }
+
+    // Format the date nicely for WhatsApp display (e.g., "15 June 2026")
+    let prettyDate = bookingForm.date;
+    if (bookingForm.date) {
+      try {
+        const dateObj = new Date(bookingForm.date);
+        if (!isNaN(dateObj)) {
+          prettyDate = dateObj.toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          });
+        }
+      } catch (e) {
+        prettyDate = bookingForm.date;
+      }
+    }
+
+    // Format beautifully structured pre-filled WhatsApp text with strict escape sequences
+    const whatsAppMessage = 
+      `*ALLOVEDA CLINIC - APPOINTMENT REQUEST*\n` +
+      `----------------------------------\n` +
+      `*Booking ID:* ${bookingId}\n\n` +
+      `New Appointment Request\n\n` +
+      `Patient Name: ${bookingForm.name}\n` +
+      `Mobile Number: ${bookingForm.phone}\n` +
+      `Email Address: ${bookingForm.email || 'Not Provided'}\n\n` +
+      `Doctor: ${bookingForm.doctor}\n` +
+      `Consultation Type: ${bookingForm.type}\n\n` +
+      `Preferred Date: ${prettyDate}\n` +
+      `Preferred Time: ${bookingForm.time}\n\n` +
+      `Message:\n` +
+      `${bookingForm.notes || 'None'}\n\n` +
+      `Please confirm my slot manual review.\n` +
+      `Thank you.`;
+
     setBookedDetails(details);
     setIsBooked(true);
+
+    // Redirect to Clinic WhatsApp Number +91 9922668668 with the encoded message payload
+    const encodedPayload = encodeURIComponent(whatsAppMessage);
+    const whatsappDestinationUrl = `https://wa.me/919922668668?text=${encodedPayload}`;
+    
+    // Redirect instantly
+    setTimeout(() => {
+      window.open(whatsappDestinationUrl, '_blank');
+    }, 1200);
   };
 
   const filteredRates = panchakarmaRates.filter(item => {
@@ -250,7 +352,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. STICKY GLASSMORPHIC NAVIGATION WITH REAL LOGO INTEGRATION */}
+      {/* 2. STICKY GLASSMORPHIC NAVIGATION */}
       <nav className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/95 shadow-md py-2' : 'bg-white/90 py-4'} backdrop-blur-md border-b border-[#E8F5E9]/50`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
@@ -397,20 +499,20 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row gap-3 pt-2 justify-center lg:justify-start">
                   <button 
                     onClick={() => navigateTo('booking')} 
-                    className="bg-[#111111] text-white hover:bg-neutral-800 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-xs font-bold uppercase tracking-wider shadow-2xl transition-all flex items-center justify-center gap-2 group w-full sm:w-auto h-12"
+                    className="bg-[#111111] text-white hover:bg-neutral-850 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-xs font-bold uppercase tracking-wider shadow-2xl transition-all flex items-center justify-center gap-2 group w-full sm:w-auto h-12"
                   >
                     <span>Clinic Appointment</span>
                     <ChevronRight className="w-4 h-4 text-[#7ED957] group-hover:translate-x-1 transition-transform shrink-0" />
                   </button>
                   <button 
                     onClick={() => {
-                      setBookingForm({...bookingForm, type: 'WhatsApp Video Consultation'});
+                      setBookingForm({...bookingForm, type: 'Video call check up'});
                       navigateTo('booking');
                     }} 
                     className="bg-white text-slate-800 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 w-full sm:w-auto h-12"
                   >
                     <Video className="w-4 h-4 text-[#4CAF50] animate-pulse shrink-0" />
-                    WhatsApp Video Call (₹600)
+                    Video call check up (₹600)
                   </button>
                 </div>
 
@@ -690,7 +792,7 @@ export default function App() {
               {/* WhatsApp Video Consult Workflow Card */}
               <div className="bg-white border border-[#E8F5E9] p-6 sm:p-8 rounded-3xl shadow-lg space-y-4 text-left">
                 <div className="inline-flex items-center gap-1.5 text-xs font-black text-[#2E7D32] bg-[#E8F5E9] px-3.5 py-1.5 rounded-full uppercase tracking-wider">
-                  <Video className="w-4 h-4 text-[#4CAF50]" /> WhatsApp Video Call Consult
+                  <Video className="w-4 h-4 text-[#4CAF50]" /> Video call check up
                 </div>
                 <h3 className="text-xl sm:text-2xl font-bold text-[#111111] font-serif leading-tight">Virtual Consult • ₹600 Only</h3>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
@@ -699,7 +801,7 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
                   <div className="flex gap-2">
                     <CheckCircle className="w-5 h-5 text-[#4CAF50] shrink-0" />
-                    <span>Select WhatsApp Video Consult while booking</span>
+                    <span>Select Video call check up while booking</span>
                   </div>
                   <div className="flex gap-2">
                     <CheckCircle className="w-5 h-5 text-[#4CAF50] shrink-0" />
@@ -711,7 +813,7 @@ export default function App() {
                   </div>
                   <div className="flex gap-2">
                     <CheckCircle className="w-5 h-5 text-[#4CAF50] shrink-0" />
-                    <span>Consult safely via high-quality WhatsApp Video Call</span>
+                    <span>Consult safely via high-quality Video call check up</span>
                   </div>
                 </div>
               </div>
@@ -780,7 +882,7 @@ export default function App() {
                         <AlertTriangle className="w-4 h-4 shrink-0" /> Damage Risk
                       </div>
                       <h4 className="text-lg font-bold text-[#111111] font-serif">Worst Sugars & Structural Damage</h4>
-                      <p className="text-sm text-slate-600 leading-relaxed">
+                      <p className="text-sm text-slate-600 leading-relaxed font-sans">
                         After a period of unmonitored home remedies, sugars are rechecked. The patient receives the shock of their life to see worse sugars (HbA1c spiking to 10%+). By doing this, they lost essential time and risked damaging vital structural organs like kidneys, retina, or heart.
                       </p>
                     </div>
@@ -961,7 +1063,7 @@ export default function App() {
                   </div>
                   <div>
                     <h5 className="font-extrabold text-neutral-950 text-sm">Minimum Medications, Maximum Benefit:</h5>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">We believe and practice that if both Allopathy and Ayurveda are combined right from the early stage, the patient's benefit will be maximized, while the overall pharmaceutical medication dosage and its associated side-effects will be kept to an absolute minimum.</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">We believe and practice that if both Allopathy and Ayurveda combined are used right from early stage patient benefit will be maximized and use of medication dosage and thus side effects arising out of them will be minimum.</p>
                   </div>
                 </div>
 
@@ -1447,7 +1549,7 @@ export default function App() {
               {activeElement === 'Vayu' && (
                 <div className="space-y-2.5 animate-fadeIn">
                   <h4 className="text-lg font-bold text-[#7ED957] font-serif">Air Element (Vayu Mahabhuta)</h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className="text-xs text-slate-300 leading-relaxed text-left">
                     Controls overall physical movement, nervous impulses, heartbeats, and lung breathing cycles. Imbalances lead to arthritic joint pain, extreme gas, and nerve blockages. Treated with warm medicated Basti enemas.
                   </p>
                 </div>
@@ -1455,8 +1557,8 @@ export default function App() {
 
               {activeElement === 'Prithvi' && (
                 <div className="space-y-2.5 animate-fadeIn">
-                  <h4 className="text-lg font-bold text-[#7ED957] font-serif">Earth Element (Prithvi Mahabhuta)</h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <h4 className="text-lg font-bold text-[#7ED957] font-serif text-left">Earth Element (Prithvi Mahabhuta)</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed text-left">
                     Forms muscle fiber tissues, bones, cell boundaries, and overall structural body weight. Imbalanced earth elements lead to sluggishness and obesity. Addressed using specialized dry herbal rubs and precise nutrition.
                   </p>
                 </div>
@@ -1464,8 +1566,8 @@ export default function App() {
 
               {activeElement === 'Aakash' && (
                 <div className="space-y-2.5 animate-fadeIn">
-                  <h4 className="text-lg font-bold text-[#7ED957] font-serif">Space Element (Aakash Mahabhuta)</h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <h4 className="text-lg font-bold text-[#7ED957] font-serif text-left">Space Element (Aakash Mahabhuta)</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed text-left">
                     Represents physical voids, cellular empty pockets, digestive paths, and overall mental clarity. Essential for normal hormone distribution and psychological balance. Restored using yoga and calming breath practices.
                   </p>
                 </div>
@@ -1654,8 +1756,16 @@ export default function App() {
             {/* Form Column */}
             <div className="lg:col-span-8 bg-white border border-slate-200 rounded-3xl p-5 sm:p-10 shadow-xl">
               {!isBooked ? (
-                <form onSubmit={handleBookingSubmit} className="space-y-6">
+                <form onSubmit={handleBookingSubmitLocal} className="space-y-6">
                   
+                  {/* Validation Warning Message Box */}
+                  {formValidationWarning && (
+                    <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 shrink-0" />
+                      <span>{formValidationWarning}</span>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     {/* Full Name */}
                     <div className="space-y-1.5 text-left">
@@ -1778,11 +1888,11 @@ export default function App() {
                       </button>
                       <button 
                         type="button" 
-                        onClick={() => setBookingForm({...bookingForm, type: 'WhatsApp Video Consultation'})}
-                        className={`p-4 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all min-h-[44px] ${bookingForm.type === 'WhatsApp Video Consultation' ? 'bg-[#E8F5E9] border-[#4CAF50] text-[#2E7D32] ring-2 ring-[#4CAF50]/20' : 'bg-white border-slate-200 text-slate-600'}`}
+                        onClick={() => setBookingForm({...bookingForm, type: 'Video call check up'})}
+                        className={`p-4 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all min-h-[44px] ${bookingForm.type === 'Video call check up' ? 'bg-[#E8F5E9] border-[#4CAF50] text-[#2E7D32] ring-2 ring-[#4CAF50]/20' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         <Video className="w-4 h-4 text-[#4CAF50] shrink-0" />
-                        WhatsApp Video (₹600)
+                        Video call check up (₹600)
                       </button>
                     </div>
                   </div>
@@ -1801,7 +1911,7 @@ export default function App() {
 
                   {/* Consent statement */}
                   <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-500 leading-relaxed text-left font-sans">
-                    By confirming this clinical appointment query, your parameters will be registered, a notification will be forwarded to <strong>abhijeet.baldota@gmail.com</strong>, and our desk team will coordinate your WhatsApp video slot.
+                    By confirming this clinical appointment query, your parameters will be registered, and a formatted WhatsApp text summary will automatically open. Sending this to our desk manually initiates manual check-offs and confirmation.
                   </div>
 
                   <button 
@@ -1820,9 +1930,9 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-1">
-                    <h2 className="text-xl sm:text-2xl font-bold text-[#111111] font-serif">Appointment Request Logged</h2>
+                    <h2 className="text-xl sm:text-2xl font-bold text-[#111111] font-serif">Appointment Saved & WhatsApp Opening</h2>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      Your query has been forwarded to Dr. Baldota's clinic desk (abhijeet.baldota@gmail.com).
+                      Your appointment is saved to our clinic database and your formatted WhatsApp message payload is opening now...
                     </p>
                   </div>
 
@@ -1860,11 +1970,11 @@ export default function App() {
                       </div>
                     </div>
 
-                    {bookedDetails?.type === 'WhatsApp Video Consultation' && (
+                    {bookedDetails?.type === 'Video call check up' && (
                       <div className="p-3 bg-[#E8F5E9] border border-[#4CAF50]/30 rounded-xl space-y-1">
-                        <p className="text-[10px] font-black uppercase text-[#2E7D32] tracking-wider">WhatsApp Consultation Charge</p>
+                        <p className="text-[10px] font-black uppercase text-[#2E7D32] tracking-wider">Video call check up Charge</p>
                         <p className="text-sm font-extrabold text-neutral-950">₹600 INR</p>
-                        <p className="text-[11px] text-slate-600 leading-tight">Staff will contact you directly on WhatsApp to coordinate UPI/GPay payment and confirm your video slot.</p>
+                        <p className="text-[11px] text-slate-600 leading-tight">Staff will contact you directly on WhatsApp to coordinate UPI/GPay payment and confirm your slot.</p>
                       </div>
                     )}
 
@@ -1898,13 +2008,13 @@ export default function App() {
             <div className="lg:col-span-4 space-y-6 w-full max-w-md mx-auto">
               <div className="bg-[#111111] text-white p-6 sm:p-8 rounded-3xl space-y-6 border border-neutral-800 shadow-xl text-left animate-slideDown">
                 <h3 className="text-lg font-bold font-serif text-[#7ED957] border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Video className="w-5 h-5 text-[#4CAF50]" /> WhatsApp Video call
+                  <Video className="w-5 h-5 text-[#4CAF50]" /> Video call check up
                 </h3>
                 
                 <div className="space-y-4 text-xs">
                   <div className="flex items-start gap-3">
                     <div className="w-6 h-6 rounded-full bg-[#4CAF50]/20 text-[#7ED957] flex items-center justify-center font-bold text-xs mt-0.5 shrink-0">1</div>
-                    <p className="text-slate-300">Choose <strong>"WhatsApp Video Consultation"</strong> on the scheduler and submit details.</p>
+                    <p className="text-slate-300">Choose <strong>"Video call check up"</strong> on the scheduler and submit details.</p>
                   </div>
 
                   <div className="flex items-start gap-3">
@@ -1914,7 +2024,7 @@ export default function App() {
 
                   <div className="flex items-start gap-3">
                     <div className="w-6 h-6 rounded-full bg-[#4CAF50]/20 text-[#7ED957] flex items-center justify-center font-bold text-xs mt-0.5 shrink-0">3</div>
-                    <p className="text-slate-300">No custom apps or logins are needed. Our doctor will dial your WhatsApp number directly for a private video session.</p>
+                    <p className="text-slate-300">No custom apps or logins are needed. Our doctor will dial you directly for a private Video call check up.</p>
                   </div>
                 </div>
 
@@ -2069,7 +2179,7 @@ export default function App() {
                   <p className="text-[10px] text-slate-500">First Floor, Lav Kush Apartment</p>
                 </div>
                 <a 
-                  href="https://maps.google.com" 
+                  href={realGoogleMapsUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="bg-[#4CAF50] text-neutral-950 font-black text-[10px] px-3.5 py-2.5 rounded-xl uppercase tracking-wider hover:bg-[#7ED957] transition-colors w-full sm:w-auto text-center"

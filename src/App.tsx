@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Activity, 
   Leaf, 
@@ -34,11 +34,26 @@ import {
   Check
 } from 'lucide-react';
 
-type VitalKey = 'sugar' | 'cholesterol' | 'bp' | 'heart' | 'kidneys' | 'retina' | 'nerves';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, signInWithCustomToken } from "firebase/auth";
+import { getFirestore, collection, addDoc } from "firebase/firestore";
 
-interface BookingDetails {
-  id: string;
-  timestamp: string;
+// Declare expected globals injected by the hosting environment
+declare const __app_id: string | undefined;
+declare const __firebase_config: string | undefined;
+declare const __initial_auth_token: string | undefined;
+
+type CheckedVitals = {
+  sugar: boolean;
+  cholesterol: boolean;
+  bp: boolean;
+  heart: boolean;
+  kidneys: boolean;
+  retina: boolean;
+  nerves: boolean;
+};
+
+interface BookingForm {
   name: string;
   phone: string;
   email: string;
@@ -49,28 +64,33 @@ interface BookingDetails {
   notes: string;
 }
 
+interface BookingDetails extends BookingForm {
+  id: string;
+  timestamp: string;
+}
+
 export default function App() {
   // Navigation & Responsiveness States
-  const [activeTab, setActiveTab] = useState('home');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>('home');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [scrolled, setScrolled] = useState<boolean>(false);
 
-  // Logo Error Handling States (Safe React State-driven fallbacks)
-  const [logoError, setLogoError] = useState(false);
-  const [footerLogoError, setFooterLogoError] = useState(false);
-  const [heroLogoError, setHeroLogoError] = useState(false);
+  // Logo Error Handling States
+  const [logoError, setLogoError] = useState<boolean>(false);
+  const [footerLogoError, setFooterLogoError] = useState<boolean>(false);
+  const [heroLogoError, setHeroLogoError] = useState<boolean>(false);
 
   // Interaction States
-  const [synergyMode, setSynergyMode] = useState('combined');
-  const [activeElement, setActiveElement] = useState('Jal');
-  const [caseStudyStep, setCaseStudyStep] = useState(0);
-  const [currentTestimonial, setCurrentTestimonial] = useState(0);
+  const [synergyMode, setSynergyMode] = useState<string>('combined');
+  const [activeElement, setActiveElement] = useState<string>('Jal');
+  const [caseStudyStep, setCaseStudyStep] = useState<number>(0);
+  const [currentTestimonial, setCurrentTestimonial] = useState<number>(0);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-  const [panchakarmaFilter, setPanchakarmaFilter] = useState('all');
-  const [vamanTab, setVamanTab] = useState('about');
+  const [panchakarmaFilter, setPanchakarmaFilter] = useState<string>('all');
+  const [vamanTab, setVamanTab] = useState<string>('about');
 
   // Booking System States
-  const [bookingForm, setBookingForm] = useState({
+  const [bookingForm, setBookingForm] = useState<BookingForm>({
     name: '',
     phone: '',
     email: '',
@@ -80,11 +100,12 @@ export default function App() {
     type: 'Clinic Visit',
     notes: '',
   });
-  const [isBooked, setIsBooked] = useState(false);
+  const [isBooked, setIsBooked] = useState<boolean>(false);
   const [bookedDetails, setBookedDetails] = useState<BookingDetails | null>(null);
+  const [formValidationWarning, setFormValidationWarning] = useState<string>('');
 
   // Unified Diabetes Vitals & Organs Checklist State
-  const [checkedVitals, setCheckedVitals] = useState<Record<VitalKey, boolean>>({
+  const [checkedVitals, setCheckedVitals] = useState<CheckedVitals>({
     sugar: false,
     cholesterol: false,
     bp: false,
@@ -94,8 +115,48 @@ export default function App() {
     nerves: false
   });
 
+  const [db, setDb] = useState<any | null>(null);
+  const [user, setUser] = useState<any | null>(null);
+
+  // Define the missing navigateTo helper function to resolve reference errors
+  const navigateTo = (tabId: string) => {
+    setActiveTab(tabId);
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const appId = typeof __app_id !== 'undefined' ? __app_id : 'alloveda-clinic-pune';
+  const realGoogleMapsUrl = "https://www.google.com/maps/place/Alloveda+Clinic/@18.5553365,73.8020349,17z/data=!3m1!4b1!4m6!3m5!1s0x3bc2bf24930156c1:0x670e75c8161d0e31!8m2!3d18.5553314!4d73.8046098!16s%2Fg%2F11b5ysw7r1?authuser=0&entry=ttu&g_ep=EgoyMDI2MDYwMS4wIKXMDSoASAFQAw%3D%3D";
+
+  useEffect(() => {
+    // Dynamically retrieve context values provided by the client container
+    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+      try {
+        const firebaseConfig = JSON.parse(__firebase_config as string);
+        const app = initializeApp(firebaseConfig);
+        const firestoreDb = getFirestore(app);
+        const auth = getAuth(app);
+        setDb(firestoreDb);
+
+        // Authenticate Anon or via Token before executing any database saves
+        const customToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        if (customToken) {
+          signInWithCustomToken(auth, customToken)
+            .then((cred: any) => setUser(cred.user))
+            .catch(() => {
+              signInAnonymously(auth).then((cred: any) => setUser(cred.user));
+            });
+        } else {
+          signInAnonymously(auth).then((cred: any) => setUser(cred.user));
+        }
+      } catch (err) {
+        console.error("Firebase config parsing or initialization failed:", err);
+      }
+    }
+  }, []);
+
   // Toggler for checklists
-  const toggleVital = (key: VitalKey) => {
+  const toggleVital = (key: keyof CheckedVitals) => {
     setCheckedVitals(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -122,6 +183,7 @@ export default function App() {
     });
     setIsBooked(false);
     setBookedDetails(null);
+    setFormValidationWarning('');
   };
 
   // Track window scroll for premium sticky header effect
@@ -133,7 +195,7 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Panchakarma Rates Data (Directly from rachana panchakarma rates.docx)
+  // Panchakarma Rates Data
   const panchakarmaRates = [
     { name: "Vaman Course", details: "Includes comprehensive whole-body massage and targeted medicated steam", rate: 12000, category: "courses" },
     { name: "Virechan Course (6 Sittings)", details: "Full purgative detox cycle including customized massage and steam protocols", rate: 9000, category: "courses" },
@@ -180,7 +242,7 @@ export default function App() {
     }
   ];
 
-  // FAQ Data (All questions answered deeply matching documents)
+  // FAQ Data
   const faqs = [
     {
       q: "How exactly do you combine Allopathy and Ayurveda?",
@@ -196,7 +258,7 @@ export default function App() {
     },
     {
       q: "How does the Video Consultation workflow function?",
-      a: "If you select WhatsApp Video Consultation, simply submit your request. Our clinic desk will contact you via WhatsApp to verify details, manage the ₹600 consultation payment, and coordinate the call timing. The consultation is conducted directly over a WhatsApp Video Call."
+      a: "If you select Video call check up, simply submit your request. Our clinic desk will contact you via WhatsApp to verify details, manage the ₹600 consultation payment, and coordinate the call timing. The consultation is conducted directly over a Video call check up."
     },
     {
       q: "Are Ayurvedic herbs safe to take with my daily cardiac medicines?",
@@ -204,18 +266,15 @@ export default function App() {
     }
   ];
 
-  const navigateTo = (tab: string) => {
-    setActiveTab(tab);
-    setMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleBookingSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleBookingSubmitLocal = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setFormValidationWarning('');
+
     if (!bookingForm.name || !bookingForm.phone || !bookingForm.date || !bookingForm.time) {
-      alert("Please enter all required fields: Name, Phone, Date, and Time Slot.");
+      setFormValidationWarning("Please fill in all mandatory fields: Name, Phone, Date, and Time Slot.");
       return;
     }
+
     const bookingId = "ALLOVEDA-" + Math.floor(100000 + Math.random() * 900000);
     const details = {
       ...bookingForm,
@@ -224,8 +283,67 @@ export default function App() {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
       })
     };
+
+    // Rule 1: Save appointment details securely inside the public data collection path
+    if (db && user) {
+      try {
+        const appointmentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'appointments');
+        await addDoc(appointmentsRef, {
+          ...details,
+          userId: user.uid,
+          createdAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("Database save failed, continuing to WhatsApp dispatch:", err);
+      }
+    }
+
+    // Format the date nicely for WhatsApp display (e.g., "15 June 2026")
+    let prettyDate = bookingForm.date;
+    if (bookingForm.date) {
+      try {
+        const dateObj = new Date(bookingForm.date);
+        if (!isNaN(dateObj.getTime())) {
+          prettyDate = dateObj.toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          });
+        }
+      } catch (err) {
+        prettyDate = bookingForm.date;
+      }
+    }
+
+    // Format beautifully structured pre-filled WhatsApp text with strict escape sequences
+    const whatsAppMessage = 
+      `*ALLOVEDA CLINIC - APPOINTMENT REQUEST*\n` +
+      `----------------------------------\n` +
+      `*Booking ID:* ${bookingId}\n\n` +
+      `New Appointment Request\n\n` +
+      `Patient Name: ${bookingForm.name}\n` +
+      `Mobile Number: ${bookingForm.phone}\n` +
+      `Email Address: ${bookingForm.email || 'Not Provided'}\n\n` +
+      `Doctor: ${bookingForm.doctor}\n` +
+      `Consultation Type: ${bookingForm.type}\n\n` +
+      `Preferred Date: ${prettyDate}\n` +
+      `Preferred Time: ${bookingForm.time}\n\n` +
+      `Message:\n` +
+      `${bookingForm.notes || 'None'}\n\n` +
+      `Please confirm my slot manual review.\n` +
+      `Thank you.`;
+
     setBookedDetails(details);
     setIsBooked(true);
+
+    // Redirect to Clinic WhatsApp Number +91 9922668668 with the encoded message payload
+    const encodedPayload = encodeURIComponent(whatsAppMessage);
+    const whatsappDestinationUrl = `https://wa.me/919922668668?text=${encodedPayload}`;
+    
+    // Redirect instantly
+    setTimeout(() => {
+      window.open(whatsappDestinationUrl, '_blank');
+    }, 1200);
   };
 
   const filteredRates = panchakarmaRates.filter(item => {
@@ -254,7 +372,7 @@ export default function App() {
               📞 9922668668
             </a>
             <a 
-              href="https://wa.me/919922668668?text=Hello%20Alloveda%20Clinic,%20I'd%2520like%2520to%2520schedule%2520an%2520appointment." 
+              href={`https://wa.me/919922668668?text=${encodeURIComponent("Hello Alloveda Clinic, I'd like to schedule an appointment.")}`} 
               target="_blank" 
               rel="noopener noreferrer" 
               className="bg-[#4CAF50] hover:bg-[#7ED957] text-white px-3 py-1 rounded-full text-[10px] font-bold transition-all uppercase tracking-wider"
@@ -265,32 +383,20 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. STICKY GLASSMORPHIC NAVIGATION WITH REAL LOGO INTEGRATION */}
+      {/* 2. STICKY GLASSMORPHIC NAVIGATION */}
       <nav className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/95 shadow-md py-2' : 'bg-white/90 py-4'} backdrop-blur-md border-b border-[#E8F5E9]/50`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             
-            {/* Real Logo Box with pure React fallback */}
-            <div className="flex items-center gap-3 cursor-pointer group shrink-0" onClick={() => navigateTo('home')}>
-              <div className="h-12 sm:h-14 w-auto flex items-center justify-center relative transition-transform duration-300 group-hover:scale-102">
-                {!logoError ? (
-                  <img 
-                    src="Capture.JPG" 
-                    alt="Alloveda Clinic Logo" 
-                    className="h-10 sm:h-12 w-auto rounded-lg object-contain bg-neutral-950 p-1.5"
-                    onError={() => setLogoError(true)}
-                  />
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-xl bg-[#111111] text-white flex items-center justify-center font-mono font-black">
-                      av
-                    </div>
-                    <div>
-                      <span className="text-lg font-black text-neutral-900 tracking-tight font-serif">alloveda</span>
-                      <span className="text-[8px] font-bold text-[#4CAF50] ml-1 uppercase tracking-widest bg-[#E8F5E9] px-1 rounded-full">Clinic</span>
-                    </div>
-                  </div>
-                )}
+            {/* Real Logo Box - Responsive PNG */}
+            <div className="flex items-center gap-2 cursor-pointer group shrink-0" onClick={() => navigateTo('home')}>
+              <div className="h-12 sm:h-14 md:h-16 w-auto max-w-[180px] flex items-center justify-center relative transition-transform duration-300 group-hover:scale-110">
+                <img 
+                  src="/alloveda-logo.png" 
+                  alt="Alloveda Clinic Logo" 
+                  className="h-full w-auto object-contain transition-all"
+                  onError={() => setLogoError(true)}
+                />
               </div>
             </div>
 
@@ -412,20 +518,20 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row gap-3 pt-2 justify-center lg:justify-start">
                   <button 
                     onClick={() => navigateTo('booking')} 
-                    className="bg-[#111111] text-white hover:bg-neutral-800 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-xs font-bold uppercase tracking-wider shadow-2xl transition-all flex items-center justify-center gap-2 group w-full sm:w-auto h-12"
+                    className="bg-[#111111] text-white hover:bg-neutral-850 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-xs font-bold uppercase tracking-wider shadow-2xl transition-all flex items-center justify-center gap-2 group w-full sm:w-auto h-12"
                   >
                     <span>Clinic Appointment</span>
                     <ChevronRight className="w-4 h-4 text-[#7ED957] group-hover:translate-x-1 transition-transform shrink-0" />
                   </button>
                   <button 
                     onClick={() => {
-                      setBookingForm({...bookingForm, type: 'WhatsApp Video Consultation'});
+                      setBookingForm({...bookingForm, type: 'Video call check up'});
                       navigateTo('booking');
                     }} 
                     className="bg-white text-slate-800 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 w-full sm:w-auto h-12"
                   >
                     <Video className="w-4 h-4 text-[#4CAF50] animate-pulse shrink-0" />
-                    WhatsApp Video Call (₹600)
+                    Video call check up (₹600)
                   </button>
                 </div>
 
@@ -460,29 +566,18 @@ export default function App() {
                   
                   <div className="relative bg-white border border-[#E8F5E9] rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
                     
-                    {/* Logo Image */}
-                    <div className="flex justify-center pb-4 border-b border-slate-100">
-                      {!heroLogoError ? (
-                        <img 
-                          src="Capture.JPG" 
-                          alt="Alloveda Clinic Official Logo" 
-                          className="h-14 sm:h-16 w-auto rounded-lg object-contain shadow-sm bg-neutral-950 p-2"
-                          onError={() => setHeroLogoError(true)}
-                        />
-                      ) : (
-                        <div className="text-xl font-bold font-serif text-[#4CAF50] uppercase tracking-wider">alloveda</div>
-                      )}
-                    </div>
+                    
+          
 
                     {/* Dr. Abhijeet Portrait */}
                     <div className="flex items-center gap-3 sm:gap-4 p-3 rounded-2xl bg-[#F8FAF8] border border-slate-200/50">
                       <div className="w-14 sm:w-16 h-14 sm:h-16 rounded-xl overflow-hidden shrink-0 border-2 border-[#4CAF50] shadow-md">
                         <img 
-                          src="ABHIJEET BALDOTA PHOTO.png" 
+                          src="\dist\assets\ABHIJEET BALDOTA PHOTO.png" 
                           alt="Dr. Abhijeet Baldota"
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            e.currentTarget.src = "https://images.unsplash.com/photo-1622253692010-333f2da6031d?q=80&w=200&auto=format&fit=crop";
+                            e.currentTarget.src = "C:\\Users\\Admin\\Desktop\\Dr Abhijit baldota\\dist\\assets\\ABHIJEET BALDOTA PHOTO.png";
                           }}
                         />
                       </div>
@@ -705,7 +800,7 @@ export default function App() {
               {/* WhatsApp Video Consult Workflow Card */}
               <div className="bg-white border border-[#E8F5E9] p-6 sm:p-8 rounded-3xl shadow-lg space-y-4 text-left">
                 <div className="inline-flex items-center gap-1.5 text-xs font-black text-[#2E7D32] bg-[#E8F5E9] px-3.5 py-1.5 rounded-full uppercase tracking-wider">
-                  <Video className="w-4 h-4 text-[#4CAF50]" /> WhatsApp Video Call Consult
+                  <Video className="w-4 h-4 text-[#4CAF50]" /> Video call check up
                 </div>
                 <h3 className="text-xl sm:text-2xl font-bold text-[#111111] font-serif leading-tight">Virtual Consult • ₹600 Only</h3>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
@@ -714,7 +809,7 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
                   <div className="flex gap-2">
                     <CheckCircle className="w-5 h-5 text-[#4CAF50] shrink-0" />
-                    <span>Select WhatsApp Video Consult while booking</span>
+                    <span>Select Video call check up while booking</span>
                   </div>
                   <div className="flex gap-2">
                     <CheckCircle className="w-5 h-5 text-[#4CAF50] shrink-0" />
@@ -726,7 +821,7 @@ export default function App() {
                   </div>
                   <div className="flex gap-2">
                     <CheckCircle className="w-5 h-5 text-[#4CAF50] shrink-0" />
-                    <span>Consult safely via high-quality WhatsApp Video Call</span>
+                    <span>Consult safely via high-quality Video call check up</span>
                   </div>
                 </div>
               </div>
@@ -795,7 +890,7 @@ export default function App() {
                         <AlertTriangle className="w-4 h-4 shrink-0" /> Damage Risk
                       </div>
                       <h4 className="text-lg font-bold text-[#111111] font-serif">Worst Sugars & Structural Damage</h4>
-                      <p className="text-sm text-slate-600 leading-relaxed">
+                      <p className="text-sm text-slate-600 leading-relaxed font-sans">
                         After a period of unmonitored home remedies, sugars are rechecked. The patient receives the shock of their life to see worse sugars (HbA1c spiking to 10%+). By doing this, they lost essential time and risked damaging vital structural organs like kidneys, retina, or heart.
                       </p>
                     </div>
@@ -853,7 +948,7 @@ export default function App() {
                 {/* Consulting chamber */}
                 <div className="relative rounded-2xl overflow-hidden group shadow-md h-52 sm:h-56 border border-slate-200">
                   <img 
-                    src="2017-09-03 (1).jpg" 
+                    src="\dist\assets\2017-09-03 (1).jpg" 
                     alt="Alloveda Doctors Consulting Desk" 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
@@ -871,7 +966,7 @@ export default function App() {
                 {/* Exterior Storefront */}
                 <div className="relative rounded-2xl overflow-hidden group shadow-md h-52 sm:h-56 border border-slate-200">
                   <img 
-                    src="2017-09-03 (2).jpg" 
+                    src="\dist\assets\Screenshot 2026-06-04 154422.png" 
                     alt="Alloveda Clinic Exterior Entrance Sign Board" 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
@@ -889,7 +984,7 @@ export default function App() {
                 {/* Natural sign */}
                 <div className="relative rounded-2xl overflow-hidden group shadow-md h-52 sm:h-56 border border-slate-200 sm:col-span-2 lg:col-span-1">
                   <img 
-                    src="102_72_Ayurveda-sign.jpg" 
+                    src="\dist\assets\Screenshot 2026-06-04 154443.png" 
                     alt="Divine Ayurvedic Lily Herbal Backdrop" 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
@@ -976,7 +1071,7 @@ export default function App() {
                   </div>
                   <div>
                     <h5 className="font-extrabold text-neutral-950 text-sm">Minimum Medications, Maximum Benefit:</h5>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">We believe and practice that if both Allopathy and Ayurveda are combined right from the early stage, the patient's benefit will be maximized, while the overall pharmaceutical medication dosage and its associated side-effects will be kept to an absolute minimum.</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">We believe and practice that if both Allopathy and Ayurveda combined are used right from early stage patient benefit will be maximized and use of medication dosage and thus side effects arising out of them will be minimum.</p>
                   </div>
                 </div>
 
@@ -1009,7 +1104,7 @@ export default function App() {
             <div className="lg:col-span-5 bg-white border border-[#E8F5E9] p-5 sm:p-6 rounded-3xl space-y-6 shadow-xl relative overflow-hidden w-full max-w-md mx-auto text-left">
               <div className="h-44 sm:h-48 rounded-2xl overflow-hidden shadow-sm border border-slate-150">
                 <img 
-                  src="2017-09-03 (1).jpg" 
+                  src="\dist\assets\Screenshot 2026-06-04 154422.png" 
                   alt="Alloveda Consulting Space" 
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -1026,7 +1121,7 @@ export default function App() {
               <div className="border-t border-slate-100 pt-5 flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
                   <img 
-                    src="ABHIJEET BALDOTA PHOTO.png" 
+                    src="\dist\assets\ABHIJEET BALDOTA PHOTO.png" 
                     alt="Dr. Abhijeet Baldota"
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -1191,7 +1286,7 @@ export default function App() {
             <div className="lg:col-span-5 w-full max-w-md mx-auto">
               <div className="relative rounded-3xl overflow-hidden shadow-xl border border-[#E8F5E9] h-60">
                 <img 
-                  src="DIABETES FOR WEBSITE.jpg" 
+                  src="\dist\assets\DIABETES FOR WEBSITE.jpg" 
                   alt="Diabetes diagnostic kit elements" 
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -1233,7 +1328,7 @@ export default function App() {
               </div>
 
               <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-                {([
+                {[
                   { key: 'sugar', label: "HbA1c Blood Glucose" },
                   { key: 'cholesterol', label: "Lipid Profile (LDL/HDL)" },
                   { key: 'bp', label: "Blood Pressure (<130/80)" },
@@ -1241,15 +1336,15 @@ export default function App() {
                   { key: 'kidneys', label: "Urine Microalbumin" },
                   { key: 'retina', label: "Retinal Eye Fundoscopy" },
                   { key: 'nerves', label: "Vibration Foot Sensation" }
-                ] as { key: VitalKey; label: string }[]).map((item) => (
+                ].map((item) => (
                   <button
                     key={item.key}
-                    onClick={() => toggleVital(item.key)}
+                    onClick={() => toggleVital(item.key as keyof CheckedVitals)}
                     className="flex items-center justify-between p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 transition-all text-xs focus:outline-none"
                   >
                     <span className="font-semibold text-slate-200">{item.label}</span>
-                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ml-3 ${checkedVitals[item.key] ? 'bg-[#4CAF50] text-neutral-950' : 'border border-slate-500'}`}>
-                      {checkedVitals[item.key] && "✓"}
+                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ml-3 ${(checkedVitals[item.key as keyof CheckedVitals]) ? 'bg-[#4CAF50] text-neutral-950' : 'border border-slate-500'}`}>
+                      {(checkedVitals[item.key as keyof CheckedVitals]) && "✓"}
                     </div>
                   </button>
                 ))}
@@ -1308,7 +1403,7 @@ export default function App() {
               <div className="lg:col-span-4 flex flex-col items-center justify-center space-y-4 w-full">
                 <div className="h-56 sm:h-64 rounded-2xl overflow-hidden shadow-md border border-slate-100 w-full relative">
                   <img 
-                    src="102_72_Ayurveda-sign.jpg" 
+                    src="\dist\assets\Screenshot 2026-06-04 160700.png" 
                     alt="Ayurvedic Treatment Room lilies sign backdrop" 
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -1462,7 +1557,7 @@ export default function App() {
               {activeElement === 'Vayu' && (
                 <div className="space-y-2.5 animate-fadeIn">
                   <h4 className="text-lg font-bold text-[#7ED957] font-serif">Air Element (Vayu Mahabhuta)</h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className="text-xs text-slate-300 leading-relaxed text-left">
                     Controls overall physical movement, nervous impulses, heartbeats, and lung breathing cycles. Imbalances lead to arthritic joint pain, extreme gas, and nerve blockages. Treated with warm medicated Basti enemas.
                   </p>
                 </div>
@@ -1470,8 +1565,8 @@ export default function App() {
 
               {activeElement === 'Prithvi' && (
                 <div className="space-y-2.5 animate-fadeIn">
-                  <h4 className="text-lg font-bold text-[#7ED957] font-serif">Earth Element (Prithvi Mahabhuta)</h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <h4 className="text-lg font-bold text-[#7ED957] font-serif text-left">Earth Element (Prithvi Mahabhuta)</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed text-left">
                     Forms muscle fiber tissues, bones, cell boundaries, and overall structural body weight. Imbalanced earth elements lead to sluggishness and obesity. Addressed using specialized dry herbal rubs and precise nutrition.
                   </p>
                 </div>
@@ -1479,8 +1574,8 @@ export default function App() {
 
               {activeElement === 'Aakash' && (
                 <div className="space-y-2.5 animate-fadeIn">
-                  <h4 className="text-lg font-bold text-[#7ED957] font-serif">Space Element (Aakash Mahabhuta)</h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <h4 className="text-lg font-bold text-[#7ED957] font-serif text-left">Space Element (Aakash Mahabhuta)</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed text-left">
                     Represents physical voids, cellular empty pockets, digestive paths, and overall mental clarity. Essential for normal hormone distribution and psychological balance. Restored using yoga and calming breath practices.
                   </p>
                 </div>
@@ -1521,7 +1616,7 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row gap-5 sm:gap-6 items-start sm:items-center">
                   <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md shrink-0 mx-auto sm:mx-0">
                     <img 
-                      src="ABHIJEET BALDOTA PHOTO.png" 
+                      src="\dist\assets\ABHIJEET BALDOTA PHOTO.png" 
                       alt="Dr. Abhijeet Baldota Profile photo"
                       className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                       onError={(e) => {
@@ -1574,7 +1669,16 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row gap-5 sm:gap-6 items-start sm:items-center">
                   <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-[#E8F5E9] text-white flex items-center justify-center font-mono font-black text-3xl shadow-lg shrink-0 border-2 border-[#4CAF50] mx-auto sm:mx-0">
-                    <Leaf className="w-10 h-10 sm:w-12 sm:h-12 text-[#4CAF50]" />
+                     <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md shrink-0 mx-auto sm:mx-0">
+                    <img 
+                      src="\dist\assets\RACHANA BALDOTA PHOTO.jpg" 
+                      alt="Dr. Rachana Baldota Profile photo"
+                      className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                      onError={(e) => {
+                        e.currentTarget.src = "https://images.unsplash.com/photo-1622253692010-333f2da6031d?q=80&w=200&auto=format&fit=crop";
+                      }}
+                    />
+                  </div>
                   </div>
                   <div className="space-y-1.5 text-center sm:text-left w-full font-sans">
                     <span className="text-[9px] sm:text-[10px] uppercase font-extrabold text-[#2E7D32] bg-[#E8F5E9] px-2.5 py-1 rounded-full tracking-wider inline-block">
@@ -1669,8 +1773,16 @@ export default function App() {
             {/* Form Column */}
             <div className="lg:col-span-8 bg-white border border-slate-200 rounded-3xl p-5 sm:p-10 shadow-xl">
               {!isBooked ? (
-                <form onSubmit={handleBookingSubmit} className="space-y-6">
+                <form onSubmit={handleBookingSubmitLocal} className="space-y-6">
                   
+                  {/* Validation Warning Message Box */}
+                  {formValidationWarning && (
+                    <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 shrink-0" />
+                      <span>{formValidationWarning}</span>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     {/* Full Name */}
                     <div className="space-y-1.5 text-left">
@@ -1793,11 +1905,11 @@ export default function App() {
                       </button>
                       <button 
                         type="button" 
-                        onClick={() => setBookingForm({...bookingForm, type: 'WhatsApp Video Consultation'})}
-                        className={`p-4 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all min-h-[44px] ${bookingForm.type === 'WhatsApp Video Consultation' ? 'bg-[#E8F5E9] border-[#4CAF50] text-[#2E7D32] ring-2 ring-[#4CAF50]/20' : 'bg-white border-slate-200 text-slate-600'}`}
+                        onClick={() => setBookingForm({...bookingForm, type: 'Video call check up'})}
+                        className={`p-4 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all min-h-[44px] ${bookingForm.type === 'Video call check up' ? 'bg-[#E8F5E9] border-[#4CAF50] text-[#2E7D32] ring-2 ring-[#4CAF50]/20' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         <Video className="w-4 h-4 text-[#4CAF50] shrink-0" />
-                        WhatsApp Video (₹600)
+                        Video call check up (₹600)
                       </button>
                     </div>
                   </div>
@@ -1816,7 +1928,7 @@ export default function App() {
 
                   {/* Consent statement */}
                   <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-500 leading-relaxed text-left font-sans">
-                    By confirming this clinical appointment query, your parameters will be registered, a notification will be forwarded to <strong>abhijeet.baldota@gmail.com</strong>, and our desk team will coordinate your WhatsApp video slot.
+                    By confirming this clinical appointment query, your parameters will be registered, and a formatted WhatsApp text summary will automatically open. Sending this to our desk manually initiates manual check-offs and confirmation.
                   </div>
 
                   <button 
@@ -1835,9 +1947,9 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-1">
-                    <h2 className="text-xl sm:text-2xl font-bold text-[#111111] font-serif">Appointment Request Logged</h2>
+                    <h2 className="text-xl sm:text-2xl font-bold text-[#111111] font-serif">Appointment Saved & WhatsApp Opening</h2>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      Your query has been forwarded to Dr. Baldota's clinic desk (abhijeet.baldota@gmail.com).
+                      Your appointment is saved to our clinic database and your formatted WhatsApp message payload is opening now...
                     </p>
                   </div>
 
@@ -1875,11 +1987,11 @@ export default function App() {
                       </div>
                     </div>
 
-                    {bookedDetails?.type === 'WhatsApp Video Consultation' && (
+                    {bookedDetails?.type === 'Video call check up' && (
                       <div className="p-3 bg-[#E8F5E9] border border-[#4CAF50]/30 rounded-xl space-y-1">
-                        <p className="text-[10px] font-black uppercase text-[#2E7D32] tracking-wider">WhatsApp Consultation Charge</p>
+                        <p className="text-[10px] font-black uppercase text-[#2E7D32] tracking-wider">Video call check up Charge</p>
                         <p className="text-sm font-extrabold text-neutral-950">₹600 INR</p>
-                        <p className="text-[11px] text-slate-600 leading-tight">Staff will contact you directly on WhatsApp to coordinate UPI/GPay payment and confirm your video slot.</p>
+                        <p className="text-[11px] text-slate-600 leading-tight">Staff will contact you directly on WhatsApp to coordinate UPI/GPay payment and confirm your slot.</p>
                       </div>
                     )}
 
@@ -1913,13 +2025,13 @@ export default function App() {
             <div className="lg:col-span-4 space-y-6 w-full max-w-md mx-auto">
               <div className="bg-[#111111] text-white p-6 sm:p-8 rounded-3xl space-y-6 border border-neutral-800 shadow-xl text-left animate-slideDown">
                 <h3 className="text-lg font-bold font-serif text-[#7ED957] border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Video className="w-5 h-5 text-[#4CAF50]" /> WhatsApp Video call
+                  <Video className="w-5 h-5 text-[#4CAF50]" /> Video call check up
                 </h3>
                 
                 <div className="space-y-4 text-xs">
                   <div className="flex items-start gap-3">
                     <div className="w-6 h-6 rounded-full bg-[#4CAF50]/20 text-[#7ED957] flex items-center justify-center font-bold text-xs mt-0.5 shrink-0">1</div>
-                    <p className="text-slate-300">Choose <strong>"WhatsApp Video Consultation"</strong> on the scheduler and submit details.</p>
+                    <p className="text-slate-300">Choose <strong>"Video call check up"</strong> on the scheduler and submit details.</p>
                   </div>
 
                   <div className="flex items-start gap-3">
@@ -1929,7 +2041,24 @@ export default function App() {
 
                   <div className="flex items-start gap-3">
                     <div className="w-6 h-6 rounded-full bg-[#4CAF50]/20 text-[#7ED957] flex items-center justify-center font-bold text-xs mt-0.5 shrink-0">3</div>
-                    <p className="text-slate-300">No custom apps or logins are needed. Our doctor will dial your WhatsApp number directly for a private video session.</p>
+                    <p className="text-slate-300">No custom apps or logins are needed. Our doctor will dial you directly for a private Video call check up.</p>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl">
+                  <div className="p-5 sm:p-6">
+                    <h3 className="text-sm font-bold text-[#111111] mb-3 uppercase tracking-widest">Clinic Location</h3>
+                    <div className="w-full aspect-[4/3] overflow-hidden rounded-3xl border border-slate-200">
+                      <iframe 
+                        src="https://www.google.com/maps/embed?pb=!4v1780568152281!6m8!1m7!1sCAoSF0NJSE0wb2dLRUlDQWdJRHFpODJneVFF!2m2!1d18.55530402918578!2d73.80460322703323!3f29.010846892541508!4f-31.072323979853124!5f0.7820865974627469" 
+                        className="w-full h-full"
+                        style={{ border: 0 }}
+                        allowFullScreen={true}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        title="Alloveda Clinic Location"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2044,7 +2173,7 @@ export default function App() {
             {/* Quick action buttons */}
             <div className="pt-4 flex flex-wrap gap-3 justify-center sm:justify-start">
               <a 
-                href="https://wa.me/919922668668?text=Hi%20Alloveda%20Clinic,%20I'd%20like%20to%20book%20an%20appointment."
+                href={`https://wa.me/919922668668?text=${encodeURIComponent("Hi Alloveda Clinic, I'd like to book an appointment.")}`}
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="bg-[#4CAF50] hover:bg-[#7ED957] text-neutral-950 font-extrabold px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors inline-flex items-center gap-2 min-h-[44px]"
@@ -2084,7 +2213,7 @@ export default function App() {
                   <p className="text-[10px] text-slate-500">First Floor, Lav Kush Apartment</p>
                 </div>
                 <a 
-                  href="https://maps.google.com" 
+                  href={realGoogleMapsUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="bg-[#4CAF50] text-neutral-950 font-black text-[10px] px-3.5 py-2.5 rounded-xl uppercase tracking-wider hover:bg-[#7ED957] transition-colors w-full sm:w-auto text-center"
@@ -2104,21 +2233,14 @@ export default function App() {
         <div className="max-w-7xl mx-auto space-y-6">
           
           <div className="flex justify-center items-center pb-4 border-b border-neutral-900">
-            {!footerLogoError ? (
+            <div className="h-16 sm:h-18 w-auto max-w-[190px] flex items-center justify-center">
               <img 
-                src="Capture.JPG" 
-                alt="Alloveda Clinic Official Brand Logo Footer" 
-                className="h-12 sm:h-14 w-auto rounded-lg object-contain bg-neutral-950 p-1"
+                src="/alloveda-logo.png" 
+                alt="Alloveda Clinic Official Brand Logo" 
+                className="h-full w-auto object-contain"
                 onError={() => setFooterLogoError(true)}
               />
-            ) : (
-              <div className="flex justify-center items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#4CAF50] text-neutral-950 flex items-center justify-center font-bold text-sm font-mono">
-                  av
-                </div>
-                <span className="font-extrabold text-white text-base tracking-tight font-serif">alloveda clinic</span>
-              </div>
-            )}
+            </div>
           </div>
 
           <div className="flex flex-wrap justify-center gap-6 text-slate-500 font-bold">
@@ -2144,7 +2266,7 @@ export default function App() {
       {/* FLOATING ACTION UTILITIES */}
       <div className="fixed bottom-6 right-6 z-45 flex flex-col gap-3">
         <a 
-          href="https://wa.me/919922668668?text=Hello%20Alloveda%20Clinic!%20I'd%2520like%2520to%2520request%2520an%2520integrated%2520consultation."
+          href={`https://wa.me/919922668668?text=${encodeURIComponent("Hello Alloveda Clinic! I'd like to request an integrated consultation.")}`}
           target="_blank"
           rel="noopener noreferrer"
           className="w-12 h-12 rounded-full bg-[#4CAF50] text-white flex items-center justify-center shadow-2xl hover:bg-[#7ED957] hover:scale-105 transition-all"
