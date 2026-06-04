@@ -577,7 +577,7 @@ export default function App() {
                           alt="Dr. Abhijeet Baldota"
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            e.currentTarget.src = "C:\\Users\\Admin\\Desktop\\Dr Abhijit baldota\\dist\\assets\\ABHIJEET BALDOTA PHOTO.png";
+                            e.currentTarget.src = "https://i.ibb.co/Y7ZNPWMB/ABHIJEET-BALDOTA-PHOTO.png";
                           }}
                         />
                       </div>
@@ -952,7 +952,7 @@ export default function App() {
                     alt="Alloveda Doctors Consulting Desk" 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1584515906207-fd6c41a49f80?q=80&w=600&auto=format&fit=crop";
+                      e.currentTarget.src = "https://i.ibb.co/n8mGf2fH/2017-09-03-1.jpg";
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent flex items-end p-4 text-left">
@@ -970,7 +970,7 @@ export default function App() {
                     alt="Alloveda Clinic Exterior Entrance Sign Board" 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=600&auto=format&fit=crop";
+                      e.currentTarget.src = "https://i.ibb.co/CpP1BFWG/Screenshot-2026-06-04-154422.png";
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent flex items-end p-4 text-left">
@@ -988,7 +988,7 @@ export default function App() {
                     alt="Divine Ayurvedic Lily Herbal Backdrop" 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1540555700478-4be289fbecef?q=80&w=600&auto=format&fit=crop";
+                      e.currentTarget.src = "https://i.ibb.co/whSbDLvs/Screenshot-2026-06-04-154443.png";
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent flex items-end p-4 text-left">
@@ -1108,7 +1108,7 @@ export default function App() {
                   alt="Alloveda Consulting Space" 
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    e.currentTarget.src = "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=400&auto=format&fit=crop";
+                    e.currentTarget.src = "https://i.ibb.co/Y7ZNPWMB/ABHIJEET-BALDOTA-PHOTO.png";
                   }}
                 />
               </div>
@@ -1125,7 +1125,7 @@ export default function App() {
                     alt="Dr. Abhijeet Baldota"
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1622253692010-333f2da6031d?q=80&w=200&auto=format&fit=crop";
+                      e.currentTarget.src = "https://i.ibb.co/Y7ZNPWMB/ABHIJEET-BALDOTA-PHOTO.png";
                     }}
                   />
                 </div>
@@ -1290,7 +1290,7 @@ export default function App() {
                   alt="Diabetes diagnostic kit elements" 
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    e.currentTarget.src = "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?q=80&w=400&auto=format&fit=crop";
+                    e.currentTarget.src = "https://i.ibb.co/zWHRGLnY/DIABETES-FOR-WEBSITE.jpg";
                   }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/95 via-neutral-950/30 to-transparent flex items-end p-5 text-left">
@@ -1407,7 +1407,7 @@ export default function App() {
                     alt="Ayurvedic Treatment Room lilies sign backdrop" 
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1540555700478-4be289fbecef?q=80&w=600&auto=format&fit=crop";
+                      e.currentTarget.src = "https://i.ibb.co/7xwyVc4N/Screenshot-2026-06-04-160700.png";
                     }}
                   />
                   <div className="absolute inset-0 bg-neutral-950/40"></div>
@@ -1620,7 +1620,7 @@ export default function App() {
                       alt="Dr. Abhijeet Baldota Profile photo"
                       className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                       onError={(e) => {
-                        e.currentTarget.src = "https://images.unsplash.com/photo-1622253692010-333f2da6031d?q=80&w=200&auto=format&fit=crop";
+                        e.currentTarget.src = "https://i.ibb.co/Y7ZNPWMB/ABHIJEET-BALDOTA-PHOTO.png";
                       }}
                     />
                   </div>
@@ -1675,7 +1675,7 @@ export default function App() {
                       alt="Dr. Rachana Baldota Profile photo"
                       className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                       onError={(e) => {
-                        e.currentTarget.src = "https://images.unsplash.com/photo-1622253692010-333f2da6031d?q=80&w=200&auto=format&fit=crop";
+                        e.currentTarget.src = "https://i.ibb.co/DPgDT7ST/RACHANA-BALDOTA-PHOTO.jpg";
                       }}
                     />
                   </div>
