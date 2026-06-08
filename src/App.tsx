@@ -507,7 +507,7 @@ export default function App() {
                 </div>
                 
                 <h1 className="text-3xl sm:text-5xl lg:text-[48px] xl:text-[54px] font-extrabold text-[#111111] leading-tight font-serif tracking-tight">
-                  Where Modern <span className="text-[#4CAF50] underline decoration-[#7ED957] decoration-wavy decoration-2">Allopathy</span> Meets Divine Ayurveda.
+                  Where Modern <span className="text-[#4CAF50] underline decoration-[#7ED957] decoration-wavy decoration-2">Allopathy</span> Meets Divine <span className="text-[#4CAF50]">Ayurveda</span>.
                 </h1>
                 
                 <p className="text-sm sm:text-base text-slate-600 max-w-xl mx-auto lg:mx-0 leading-relaxed">
@@ -1219,7 +1219,7 @@ export default function App() {
                 <div className="w-12 h-12 rounded-2xl bg-[#E8F5E9] text-[#4CAF50] flex items-center justify-center">
                   <Heart className="w-6 h-6 shrink-0" />
                 </div>
-                <h3 className="text-lg sm:text-xl font-bold text-[#111111] font-serif">Gastro & Breast Surgeon</h3>
+                <h3 className="text-lg sm:text-xl font-bold text-[#111111] font-serif">Gastroenterology</h3>
                 <p className="text-xs sm:text-sm text-slate-500 leading-relaxed font-sans">
                   Expert visiting super-specialist consultations and surgical screening reviews for complex intestinal and oncology parameters.
                 </p>
@@ -2199,7 +2199,7 @@ export default function App() {
 
               <div className="relative z-10 space-y-4 text-left">
                 <div className="inline-flex items-center gap-1.5 bg-[#E8F5E9]/10 border border-[#4CAF50]/30 text-[#7ED957] text-xs px-3 py-1 rounded-full font-bold">
-                  📍 Opp Seasons Hotel
+                  📍 Next to Seasons Hotel
                 </div>
                 <h3 className="text-lg sm:text-xl font-bold font-serif leading-tight">Alloveda Clinic Landmark Guide</h3>
                 <p className="text-slate-400 text-xs leading-relaxed max-w-md">
@@ -2235,7 +2235,7 @@ export default function App() {
           <div className="flex justify-center items-center pb-4 border-b border-neutral-900">
             <div className="h-16 sm:h-18 w-auto max-w-[190px] flex items-center justify-center">
               <img 
-                src="/alloveda-logo.png" 
+                src="https://i.ibb.co/VWRS00bM/alloveda-logo-removebg-preview.png" 
                 alt="Alloveda Clinic Official Brand Logo" 
                 className="h-full w-auto object-contain"
                 onError={() => setFooterLogoError(true)}
