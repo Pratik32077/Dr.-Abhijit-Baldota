@@ -507,7 +507,7 @@ export default function App() {
                 </div>
                 
                 <h1 className="text-3xl sm:text-5xl lg:text-[48px] xl:text-[54px] font-extrabold text-[#111111] leading-tight font-serif tracking-tight">
-                  Where Modern <span className="text-[#4CAF50] underline decoration-[#7ED957] decoration-wavy decoration-2">Allopathy</span> Meets Divine <span className="text-[#4CAF50]">Ayurveda</span>.
+                  Where Modern <span className="text-[#4CAF50] ">Allopathy</span> Meets Divine <span className="text-[#4CAF50]">Ayurveda</span>.
                 </h1>
                 
                 <p className="text-sm sm:text-base text-slate-600 max-w-xl mx-auto lg:mx-0 leading-relaxed">
