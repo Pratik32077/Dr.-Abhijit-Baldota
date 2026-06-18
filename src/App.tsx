@@ -38,6 +38,8 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, signInWithCustomToken } from "firebase/auth";
 import { getFirestore, collection, addDoc } from "firebase/firestore";
 
+import GalleryComponent from './GalleryComponent';
+
 // Declare expected globals injected by the hosting environment
 declare const __app_id: string | undefined;
 declare const __firebase_config: string | undefined;
@@ -1136,6 +1138,11 @@ export default function App() {
               </div>
             </div>
 
+          </div>
+
+          {/* Gallery Component */}
+          <div className="border-t border-[#E8F5E9]/50 pt-12 sm:pt-20">
+            <GalleryComponent />
           </div>
         </div>
       )}
